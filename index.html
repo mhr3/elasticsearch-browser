@@ -3,8 +3,8 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title>Elasticsearch Data Browser</title>
-<link rel="stylesheet" type="text/css" href="http://cdn.sencha.io/ext-4.1.0-gpl/resources/css/ext-all.css"/>
-<script type="text/javascript" src="http://cdn.sencha.io/ext-4.1.0-gpl/ext-all.js"></script>
+<link rel="stylesheet" type="text/css" href="http://cdn.sencha.com/ext/gpl/4.2.1/resources/css/ext-all.css"/>
+<script type="text/javascript" src="http://cdn.sencha.com/ext/gpl/4.2.1/ext-all.js"></script>
 <style type="text/css">
     .x-grid-row .x-grid-cell-inner {
         white-space: normal;
@@ -146,12 +146,21 @@ Ext.onReady(function () {
                 type: 'json',
                 dbName: GET.database,
                 tableName: GET.table,
-                readRecords: function (data) {
-                    var props = data[this.dbName].mappings[this.tableName].properties;
-                    for (p in props) {
-                        var type = props[p].type;
+                processDictionary: function (dictionary, prefix) {
+                    for (p in dictionary) {
+                        if (!dictionary.hasOwnProperty(p)) continue;
+                        var type = dictionary[p].type;
                         var xtype = 'textfield';
-                        if (!type) continue;
+                        if (!type || typeof type !== "string") {
+                            var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
+                            console.log("constructing prefix for:", prefix, p, "---", newPrefix);
+                            console.log("replace:", newPrefix.replace(/[^.]/g, ""));
+                            if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
+                            this.processDictionary(dictionary[p], newPrefix);
+                            continue;
+                        }
+                        // prefixedProp
+                        var pp = prefix ? prefix + "." + p : p;
                         switch (type) {
                             case 'float':
                             case 'double':
@@ -161,38 +170,42 @@ Ext.onReady(function () {
                             case 'byte':
                                 type = 'int';
                                 xtype = 'numberfield';
-                                facetsConfig[p] = {"statistical": {"field": p}};
+                                //facetsConfig[pp] = {"statistical": {"field": p, "nested": prefix}};
                                 break;
                             case 'date':
                                 xtype = 'datefield';
-                                var d = new Date()
+                                var d = new Date();
                                 var n = d.getTimezoneOffset();
-                                facetsConfig[p] = {"date_histogram": {"field": p, "interval": "hour", "post_zone": n / 60}};
+                                //facetsConfig[pp] = {"date_histogram": {"field": p, "interval": "hour", "post_zone": n / 60, "nested": prefix}};
                                 break;
                             case 'boolean':
                                 xtype = 'checkbox';
-                                facetsConfig[p] = {"terms": {"field": p, "size": 7}};
+                                //facetsConfig[pp] = {"terms": {"field": p, "size": 7, "nested": prefix}};
                                 break;
                             case 'string':
                                 xtype = 'textfield';
-                                facetsConfig[p] = {"terms": {"field": p, "size": 7}};
+                                if (prefix) break; // no faceting here, cause ES is weird
+                                //facetsConfig[pp] = {"terms": {"field": p, "size": 7}};
                                 break;
                             default:
                                 xtype = 'textfield';
                                 break;
                         }
                         columnModel.push({
-                            text: p.charAt(0).toUpperCase() + p.slice(1),
-                            dataIndex: p,
-                            flex: 1
+                            text: pp,
+                            dataIndex: pp
                         });
                         fieldModel.push({
-                            name: p,
-                            mapping: 'fields.' + p,
+                            name: pp,
                             type: type
                         });
-                        fieldList.push(p);
+                        console.log("Added to field model:", fieldModel[fieldModel.length-1]);
+                        fieldList.push(pp);
                     }
+                },
+                readRecords: function (data) {
+                    var props = data[this.dbName].mappings[this.tableName].properties;
+                    this.processDictionary(props, null);
                 }
             }
         },
@@ -215,6 +228,7 @@ Ext.onReady(function () {
                         reader: {
                             type: 'json',
                             root: 'hits.hits',
+                            record: '_source',
                             totalProperty: 'hits.total'
                         },
                         doRequest: function (operation, callback, scope) {
@@ -222,7 +236,7 @@ Ext.onReady(function () {
                             // console.log(request.params.query);
                             // defaults
                             var raw = {
-                                "fields": fieldList,
+                                "_source": fieldList,
                                 "from": request.params.from,
                                 "size": request.params.size
                             };
@@ -263,6 +277,7 @@ Ext.onReady(function () {
 
                             if (dataStore.proxy.reader.jsonData.facets === undefined)
                                 return;
+
                             for (i in grid.columns) {
                                 if (dataStore.proxy.reader.jsonData.facets[grid.columns[i].dataIndex] !== undefined) {
                                     var facet = dataStore.proxy.reader.jsonData.facets[grid.columns[i].dataIndex];
@@ -370,6 +385,10 @@ Ext.onReady(function () {
                                 }
                             }
                             ;
+                        },
+                        load : function(ref, records, successful, opts) {
+                            console.log("LOADED store!");
+                            console.log(ref, records, successful, opts);
                         }
                     }
                 });
@@ -380,7 +399,6 @@ Ext.onReady(function () {
                         enableTextSelection: true
                     },
                     stateful: true,
-                    width: '100%',
                     height: (window.innerWidth !== undefined) ?
                             window.innerHeight : Math.max(document.documentElement.clientHeight, document.body.clientHeight),
                     frame: false,
