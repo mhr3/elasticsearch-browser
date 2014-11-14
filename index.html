@@ -44,7 +44,8 @@ Ext.define('Ext.ux.form.SearchField', {
         me.callParent(arguments);
         me.on('specialkey', function (f, e) {
             if (e.getKey() == e.ENTER) {
-                me.onTrigger2Click();
+                if (me.getValue().trim() === "") me.onTrigger1Click();
+                else me.onTrigger2Click();
             }
         });
         me.store.remoteFilter = true;
@@ -76,6 +77,7 @@ Ext.define('Ext.ux.form.SearchField', {
     onTrigger2Click: function () {
         var me = this, value = me.getValue();
         if (value.length > 0) {
+            me.store.clearFilter(true);
             me.store.filter({
                 id: me.paramName,
                 property: me.paramName,
@@ -410,6 +412,7 @@ Ext.onReady(function () {
                     frame: false,
                     title: GET.table.charAt(0).toUpperCase() + GET.table.slice(1),
                     store: dataStore,
+                    allowDeselect: true,
                     plugins: ['headertooltip'],
                     loadmask: true,
                     columns: columnModel,
