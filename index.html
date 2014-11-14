@@ -124,7 +124,7 @@ Ext.onReady(function () {
     var columnModel = [];
     var fieldModel = [];
     var fieldList = [];
-    var facetsConfig = {};
+    var aggregations = {};
     var schemaStore = Ext.create('Ext.data.Store', {
         autoLoad: true,
         fields: [
@@ -153,8 +153,6 @@ Ext.onReady(function () {
                         var xtype = 'textfield';
                         if (!type || typeof type !== "string") {
                             var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
-                            console.log("constructing prefix for:", prefix, p, "---", newPrefix);
-                            console.log("replace:", newPrefix.replace(/[^.]/g, ""));
                             if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
                             this.processDictionary(dictionary[p], newPrefix);
                             continue;
@@ -170,22 +168,21 @@ Ext.onReady(function () {
                             case 'byte':
                                 type = 'int';
                                 xtype = 'numberfield';
-                                //facetsConfig[pp] = {"statistical": {"field": p, "nested": prefix}};
+                                aggregations[pp] = {"extended_stats": {"field": pp}};
                                 break;
                             case 'date':
                                 xtype = 'datefield';
                                 var d = new Date();
                                 var n = d.getTimezoneOffset();
-                                //facetsConfig[pp] = {"date_histogram": {"field": p, "interval": "hour", "post_zone": n / 60, "nested": prefix}};
+                                aggregations[pp] = {"date_histogram": {"field": pp, "interval": "hour", "post_zone": n / 60}};
                                 break;
                             case 'boolean':
                                 xtype = 'checkbox';
-                                //facetsConfig[pp] = {"terms": {"field": p, "size": 7, "nested": prefix}};
+                                aggregations[pp] = {"terms": {"field": pp, "size": 3}};
                                 break;
                             case 'string':
                                 xtype = 'textfield';
-                                if (prefix) break; // no faceting here, cause ES is weird
-                                //facetsConfig[pp] = {"terms": {"field": p, "size": 7}};
+                                aggregations[pp] = {"terms": {"field": pp, "size": 7}};
                                 break;
                             default:
                                 xtype = 'textfield';
@@ -199,7 +196,6 @@ Ext.onReady(function () {
                             name: pp,
                             type: type
                         });
-                        console.log("Added to field model:", fieldModel[fieldModel.length-1]);
                         fieldList.push(pp);
                     }
                 },
@@ -225,11 +221,18 @@ Ext.onReady(function () {
                         filterParam: 'query',
                         limitParam: 'size',
                         startParam: 'from',
+                        sortParam: 'sort',
                         reader: {
                             type: 'json',
                             root: 'hits.hits',
                             record: '_source',
                             totalProperty: 'hits.total'
+                        },
+                        encodeSorters: function (sorters) {
+                            var s = sorters[0];
+                            var esSort = {};
+                            esSort[s.property] = {order: s.direction.toLowerCase(), ignore_unmapped: true};
+                            return JSON.stringify(esSort);
                         },
                         doRequest: function (operation, callback, scope) {
                             var request = this.buildRequest(operation, callback, scope);
@@ -253,8 +256,11 @@ Ext.onReady(function () {
                                     }
                                 };
                             }
+                            if (request.params.sort !== undefined) {
+                                raw['sort'] = JSON.parse(request.params.sort);
+                            }
                             // facets
-                            raw['facets'] = facetsConfig;
+                            //raw['facets'] = facetsConfig;
 
                             Ext.apply(request, {
                                 headers: this.headers,
