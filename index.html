@@ -41,6 +41,74 @@ Ext.require([
     'Ext.chart.*'
 ]);
 
+Ext.define('ES.data.proxy', {
+    extend: 'Ext.data.proxy.Rest',
+
+    fields: undefined,
+
+    encodeFilters: function (filters) {
+        var f = filters[0];
+        return f.getValue();
+    },
+
+    encodeSorters: function (sorters) {
+        var s = sorters[0];
+        var esSort = {};
+        esSort[s.getProperty()] = {order: s.getDirection().toLowerCase(), ignore_unmapped: true};
+        return JSON.stringify(esSort);
+    },
+
+    doRequest: function (operation, callback, scope) {
+        var request = this.buildRequest(operation, callback, scope);
+        var params = request.getParams();
+
+        // defaults
+        var raw = {
+            "_source": this.fields,
+            "from": params.from,
+            "size": params.size
+        };
+        // query
+        raw['query'] = {
+            "match_all": {}
+        };
+        if (params.query !== undefined) {
+            raw['query'] = {
+                "query_string": {
+                    "default_operator": "AND",
+                    "default_field": "_all",
+                    "query": params.query
+                }
+            };
+        }
+        if (params.sort !== undefined) {
+            raw['sort'] = JSON.parse(params.sort);
+        }
+        // facets
+        //raw['facets'] = facetsConfig;
+
+        request.setConfig({
+            binary              : this.getBinary(),
+            headers             : this.getHeaders(),
+            timeout             : this.getTimeout(),
+            scope               : scope,
+            callback            : this.createRequestCallback(request, operation, callback, scope),
+            method              : 'POST',
+            disableCaching      : false
+        });
+
+        request.setJsonData(raw);
+        request.setParams(undefined);
+
+        if (this.getWithCredentials()) {
+            request.setWithCredentials(true);
+            request.setUsername(this.getUsername());
+            request.setPassword(this.getPassword());
+        }
+        return this.sendRequest(request);
+    }
+});
+
 Ext.define('Ext.ux.form.SearchField', {
     extend: 'Ext.form.field.Trigger',
     alias: 'widget.searchfield',
@@ -58,12 +126,6 @@ Ext.define('Ext.ux.form.SearchField', {
             }
         });
         me.store.remoteFilter = true;
-        if (!me.store.proxy.hasOwnProperty('filterParam')) {
-            me.store.proxy.filterParam = me.paramName;
-        }
-        me.store.proxy.encodeFilters = function (filters) {
-            return filters[0].value;
-        }
     },
 
     afterRender: function () {
@@ -87,7 +149,7 @@ Ext.define('Ext.ux.form.SearchField', {
         var me = this, value = me.getValue();
         if (value.length > 0) {
             me.store.clearFilter(true);
-            me.store.filter({
+            me.store.addFilter({
                 id: me.paramName,
                 property: me.paramName,
                 value: value
@@ -155,7 +217,7 @@ Ext.onReady(function () {
             url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
             reader: {
                 type: 'json',
-                transform: { 
+                transform: {
                     fn: function (data) {
                         var processDictionary = function (dictionary, prefix) {
                             for (p in dictionary) {
@@ -229,67 +291,21 @@ Ext.onReady(function () {
                     buffered: true,
                     pageSize: 100,
                     leadingBufferZone: 100,
-                    proxy: {
-                        type: 'rest',
+                    proxy: Ext.create('ES.data.proxy', {
                         //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?pretty=true&track_scores=false',
                         url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?pretty=true&track_scores=false',
                         filterParam: 'query',
                         limitParam: 'size',
                         startParam: 'from',
                         sortParam: 'sort',
+                        fields: fieldList,
                         reader: {
                             type: 'json',
                             rootProperty: 'hits.hits',
                             record: '_source',
                             totalProperty: 'hits.total'
                         },
-                        encodeSorters: function (sorters) {
-                            var s = sorters[0];
-                            var esSort = {};
-                            esSort[s.property] = {order: s.direction.toLowerCase(), ignore_unmapped: true};
-                            return JSON.stringify(esSort);
-                        },
-                        doRequest: function (operation, callback, scope) {
-                            var request = this.buildRequest(operation, callback, scope);
-                            // console.log(request.params.query);
-                            // defaults
-                            var raw = {
-                                "_source": fieldList,
-                                "from": request.params.from,
-                                "size": request.params.size
-                            };
-                            // query
-                            raw['query'] = {
-                                "match_all": {}
-                            };
-                            if (request.params.query !== undefined) {
-                                raw['query'] = {
-                                    "query_string": {
-                                        "default_operator": "AND",
-                                        "default_field": "_all",
-                                        "query": request.params.query
-                                    }
-                                };
-                            }
-                            if (request.params.sort !== undefined) {
-                                raw['sort'] = JSON.parse(request.params.sort);
-                            }
-                            // facets
-                            //raw['facets'] = facetsConfig;
-
-                            Ext.apply(request, {
-                                headers: this.headers,
-                                timeout: this.timeout,
-                                scope: this,
-                                callback: this.createRequestCallback(request, operation, callback, scope),
-                                method: 'POST',
-                                params: Ext.encode(raw),
-                                disableCaching: false
-                            });
-                            Ext.Ajax.request(request);
-                            return request;
-                        }
-                    },
+                    }),
                     simpleSortMode: true,
                     remoteFilter: true,
                     listeners: {
@@ -409,8 +425,7 @@ Ext.onReady(function () {
                             ;
                         },
                         load : function(ref, records, successful, opts) {
-                            console.log("LOADED store!");
-                            console.log(ref, records, successful, opts);
+                            console.log("LOADED store", successful ? "successfully" : "with error");
                         }
                     }
                 });
