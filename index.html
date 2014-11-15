@@ -3,8 +3,17 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title>Elasticsearch Data Browser</title>
-<link rel="stylesheet" type="text/css" href="http://cdn.sencha.com/ext/gpl/4.2.1/resources/css/ext-all.css"/>
-<script type="text/javascript" src="http://cdn.sencha.com/ext/gpl/4.2.1/ext-all.js"></script>
+<link rel="stylesheet" type="text/css" href="resources/ext-theme-neptune-all.css"/>
+<script type="text/javascript">
+var Ext = Ext || {};
+Ext.manifest = { // the same content as "app.json"
+    compatibility: {
+              ext: '4.2'
+                  }
+}
+</script>
+<script type="text/javascript" src="ext-all-debug.js"></script>
+<script type="text/javascript" src="ext-theme-neptune.js"></script>
 <style type="text/css">
     .x-grid-row .x-grid-cell-inner {
         white-space: normal;
@@ -146,64 +155,68 @@ Ext.onReady(function () {
             url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
             reader: {
                 type: 'json',
-                dbName: GET.database,
-                tableName: GET.table,
-                processDictionary: function (dictionary, prefix) {
-                    for (p in dictionary) {
-                        if (!dictionary.hasOwnProperty(p)) continue;
-                        var type = dictionary[p].type;
-                        var xtype = 'textfield';
-                        if (!type || typeof type !== "string") {
-                            var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
-                            if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
-                            this.processDictionary(dictionary[p], newPrefix);
-                            continue;
-                        }
-                        // prefixedProp
-                        var pp = prefix ? prefix + "." + p : p;
-                        switch (type) {
-                            case 'float':
-                            case 'double':
-                            case 'integer':
-                            case 'long':
-                            case 'short':
-                            case 'byte':
-                                type = 'int';
-                                xtype = 'numberfield';
-                                aggregations[pp] = {"extended_stats": {"field": pp}};
-                                break;
-                            case 'date':
-                                xtype = 'datefield';
-                                var d = new Date();
-                                var n = d.getTimezoneOffset();
-                                aggregations[pp] = {"date_histogram": {"field": pp, "interval": "hour", "post_zone": n / 60}};
-                                break;
-                            case 'boolean':
-                                xtype = 'checkbox';
-                                aggregations[pp] = {"terms": {"field": pp, "size": 3}};
-                                break;
-                            case 'string':
-                                xtype = 'textfield';
-                                aggregations[pp] = {"terms": {"field": pp, "size": 7}};
-                                break;
-                            default:
-                                xtype = 'textfield';
-                                break;
-                        }
-                        columnModel.push({
-                            text: pp,
-                            dataIndex: pp
-                        });
-                        fieldModel.push({
-                            name: pp,
-                            type: type
-                        });
-                        fieldList.push(pp);
+                transform: { 
+                    fn: function (data) {
+                        var processDictionary = function (dictionary, prefix) {
+                            for (p in dictionary) {
+                                if (!dictionary.hasOwnProperty(p)) continue;
+                                var type = dictionary[p].type;
+                                var xtype = 'textfield';
+                                if (!type || typeof type !== "string") {
+                                    var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
+                                    if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
+                                    processDictionary(dictionary[p], newPrefix);
+                                    continue;
+                                }
+                                // prefixedProp
+                                var pp = prefix ? prefix + "." + p : p;
+                                switch (type) {
+                                    case 'float':
+                                    case 'double':
+                                    case 'integer':
+                                    case 'long':
+                                    case 'short':
+                                    case 'byte':
+                                        type = 'int';
+                                        xtype = 'numberfield';
+                                        aggregations[pp] = {"extended_stats": {"field": pp}};
+                                        break;
+                                    case 'date':
+                                        xtype = 'datefield';
+                                        var d = new Date();
+                                        var n = d.getTimezoneOffset();
+                                        aggregations[pp] = {"date_histogram": {"field": pp, "interval": "hour", "post_zone": n / 60}};
+                                        break;
+                                    case 'boolean':
+                                        xtype = 'checkbox';
+                                        aggregations[pp] = {"terms": {"field": pp, "size": 3}};
+                                        break;
+                                    case 'string':
+                                        xtype = 'textfield';
+                                        aggregations[pp] = {"terms": {"field": pp, "size": 7}};
+                                        break;
+                                    default:
+                                        xtype = 'textfield';
+                                        break;
+                                }
+                                columnModel.push({
+                                    text: pp,
+                                    dataIndex: pp
+                                });
+                                fieldModel.push({
+                                    name: pp,
+                                    type: type
+                                });
+                                fieldList.push(pp);
+                            }
+                        };
+                        var newRoot = {
+                            total: 1,
+                            root: data[GET.database].mappings[GET.table].properties
+                        };
+                        processDictionary(newRoot.root, null);
+                        return newRoot;
                     }
-                },
-                readRecords: function (data) {
-                    var props = data[this.dbName].mappings[this.tableName].properties;
-                    this.processDictionary(props, null);
                 }
             }
         },
@@ -226,7 +239,7 @@ Ext.onReady(function () {
                         sortParam: 'sort',
                         reader: {
                             type: 'json',
-                            root: 'hits.hits',
+                            rootProperty: 'hits.hits',
                             record: '_source',
                             totalProperty: 'hits.total'
                         },
@@ -283,6 +296,7 @@ Ext.onReady(function () {
                         totalcountchange: function () {
                             grid.down('#status').update({count: dataStore.getTotalCount()});
 
+                            return;
                             if (dataStore.proxy.reader.jsonData.facets === undefined)
                                 return;
 
