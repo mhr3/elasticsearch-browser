@@ -110,10 +110,18 @@ Ext.define('ES.data.proxy', {
 });
 
 Ext.define('Ext.ux.form.SearchField', {
-    extend: 'Ext.form.field.Trigger',
+    extend: 'Ext.form.field.Text',
     alias: 'widget.searchfield',
-    trigger1Cls: Ext.baseCSSPrefix + 'form-clear-trigger',
-    trigger2Cls: Ext.baseCSSPrefix + 'form-search-trigger',
+    triggers: {
+        clear: {
+            cls: Ext.baseCSSPrefix + 'form-clear-trigger',
+            handler: function() { this.onTrigger1Click(); }
+        },
+        search: {
+            cls: Ext.baseCSSPrefix + 'form-search-trigger',
+            handler: function() { this.onTrigger2Click(); }
+        }
+    },
     hasSearch: false,
     paramName: 'query',
     initComponent: function () {
@@ -130,7 +138,7 @@ Ext.define('Ext.ux.form.SearchField', {
 
     afterRender: function () {
         this.callParent();
-        this.triggerCell.item(0).setDisplayed(false);
+        this.getTrigger('clear').hide();
     },
 
     onTrigger1Click: function () {
@@ -140,7 +148,7 @@ Ext.define('Ext.ux.form.SearchField', {
             me.setValue('');
             me.store.clearFilter();
             me.hasSearch = false;
-            me.triggerCell.item(0).setDisplayed(false);
+            me.getTrigger('clear').hide();
             me.updateLayout();
         }
     },
@@ -155,7 +163,7 @@ Ext.define('Ext.ux.form.SearchField', {
                 value: value
             });
             me.hasSearch = true;
-            me.triggerCell.item(0).setDisplayed(true);
+            me.getTrigger('clear').show();
             me.updateLayout();
         }
     }
