@@ -4,14 +4,6 @@
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title>Elasticsearch Data Browser</title>
 <link rel="stylesheet" type="text/css" href="resources/ext-theme-neptune-all.css"/>
-<script type="text/javascript">
-var Ext = Ext || {};
-Ext.manifest = { // the same content as "app.json"
-    compatibility: {
-              ext: '4.2'
-                  }
-}
-</script>
 <script type="text/javascript" src="ext-all-debug.js"></script>
 <script type="text/javascript" src="ext-theme-neptune.js"></script>
 <style type="text/css">
@@ -220,6 +212,7 @@ Ext.onReady(function () {
             startParam: undefined,
             sortParam: undefined,
             limitParam: undefined,
+            timeout: 60000,
             type: 'rest',
             //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
             url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
@@ -449,7 +442,7 @@ Ext.onReady(function () {
                     frame: false,
                     title: GET.table.charAt(0).toUpperCase() + GET.table.slice(1),
                     store: dataStore,
-                    allowDeselect: true,
+                    disableSelection: true,
                     plugins: ['headertooltip'],
                     loadmask: true,
                     columns: columnModel,
