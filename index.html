@@ -205,6 +205,10 @@ Ext.onReady(function () {
             { name: 'id', unique: true },
             { name: 'docs', type: 'int' }
         ],
+        sorters: [{
+            property: 'id',
+            direction: 'ASC'
+        }],
         proxy: {
             type: 'rest',
             filterParam: undefined,
@@ -496,13 +500,11 @@ Ext.onReady(function () {
     });
 
     grid = Ext.create('Ext.grid.Panel', {
-        renderTo: document.body,
         viewConfig: {
             enableTextSelection: true
         },
         stateful: true,
-        height: (window.innerWidth !== undefined) ?
-                window.innerHeight : Math.max(document.documentElement.clientHeight, document.body.clientHeight),
+        flex: 1,
         frame: false,
         title: GET.table.charAt(0).toUpperCase() + GET.table.slice(1),
         columns: [],
@@ -511,7 +513,7 @@ Ext.onReady(function () {
         plugins: ['headertooltip'],
         dockedItems: [
             {
-                dock: 'top',
+                dock: 'bottom',
                 xtype: 'toolbar',
                 items: [
                     {
@@ -534,6 +536,56 @@ Ext.onReady(function () {
             }
         ]
     });
+
+    var controlsBox = Ext.create('Ext.panel.Panel', {
+        xtype: 'layout-horizontal-box',
+        layout: { type: 'hbox', pack: 'start', align: 'stretch' },
+
+        //collapsible: true,
+
+        bodyPadding: 10,
+
+        items: [{
+            xtype: 'textfield',
+            flex: 3,
+            fieldLabel: 'Server',
+            labelWidth: 50,
+            value: 'http://localhost:9200'
+        }, {
+            xtype: 'combobox',
+            padding: '0 10 0',
+            flex: 2,
+            fieldLabel: 'Index',
+            labelWidth: 50,
+            forceSelection: true,
+            queryMode: 'local',
+            store: indexStore,
+            valueField: 'id',
+            displayField: 'id'
+        }, {
+            xtype: 'combobox',
+            flex: 1,
+            fieldLabel: 'Type',
+            labelWidth: 50
+        }]
+    });
+
+    var topLevel = Ext.create('Ext.panel.Panel', {
+        renderTo: Ext.getBody(),
+        xtype: 'layout-vertical-box',
+        layout: { type: 'vbox', pack: 'start', align: 'stretch' },
+
+        height: (window.innerWidth !== undefined) ?
+                window.innerHeight : Math.max(document.documentElement.clientHeight, document.body.clientHeight),
+
+        title: 'ElasticSearch',
+
+        items: [
+            controlsBox,
+            grid
+        ]
+    });
+
     grid.mask("Loading data mappings...");
 });
 
