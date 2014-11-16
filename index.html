@@ -198,6 +198,45 @@ Ext.onReady(function () {
     var fieldModel = [];
     var fieldList = [];
     var aggregations = {};
+    
+    var indexStore = Ext.create('Ext.data.Store', {
+        autoLoad: true,
+        fields: [
+            { name: 'id', unique: true },
+            { name: 'docs', type: 'int' }
+        ],
+        proxy: {
+            type: 'rest',
+            filterParam: undefined,
+            groupParam: undefined,
+            pageParam: undefined,
+            startParam: undefined,
+            sortParam: undefined,
+            limitParam: undefined,
+            timeout: 20000,
+            url: 'http://localhost:' + browserPort + '/_stats/docs',
+            appendId: false,
+            noCache: false,
+            reader: {
+                type: 'json',
+                transform: {
+                    fn: function (data) {
+                        var a = [];
+                        for (var p in data.indices) {
+                            a.push({id: p, docs: data.indices[p].total.docs.count});
+                        }
+                        return a;
+                    }
+                }
+            }
+        },
+        listeners: {
+            load: function () {
+                console.log("Indices list loaded:", this.getData());
+            }
+        }
+    });
+ 
     var schemaStore = Ext.create('Ext.data.Store', {
         autoLoad: true,
         fields: [
@@ -206,16 +245,17 @@ Ext.onReady(function () {
             }
         ],
         proxy: {
+            type: 'rest',
             filterParam: undefined,
             groupParam: undefined,
             pageParam: undefined,
             startParam: undefined,
             sortParam: undefined,
             limitParam: undefined,
-            timeout: 60000,
-            type: 'rest',
-            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
-            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping?pretty=true',
+            appendId: false,
+            noCache: false,
+            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
+            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
             reader: {
                 type: 'json',
                 transform: {
@@ -295,7 +335,13 @@ Ext.onReady(function () {
                     dataStore.setAutoLoad(true);
                     grid.reconfigure(dataStore, columnModel);
                 } catch(err) {
-                    grid.mask("Error processing mapping: " + err, 'x-message-box-error');
+                    Ext.MessageBox.show({
+                        title: "Error processing mapping",
+                        msg: err,
+                        buttons: Ext.MessageBox.OK,
+                        icon: Ext.MessageBox['ERROR']
+                    });
+                    grid.disable();
                 }
             }
         }
@@ -309,12 +355,14 @@ Ext.onReady(function () {
         pageSize: 100,
         leadingBufferZone: 100,
         proxy: Ext.create('ES.data.proxy', {
-            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?pretty=true&track_scores=false',
-            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?pretty=true&track_scores=false',
             filterParam: 'query',
             limitParam: 'size',
             startParam: 'from',
             sortParam: 'sort',
+            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?track_scores=false',
+            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?&track_scores=false',
+            appendId: false,
+            noCache: false,
             fields: fieldList,
             reader: {
                 type: 'json',
@@ -468,7 +516,7 @@ Ext.onReady(function () {
                 items: [
                     {
                         width: 500,
-                        labelWidth: 40,
+                        labelWidth: 50,
                         fieldLabel: 'Search',
                         itemId: 'search',
                         emptyText: 'keyword OR AND NOT () field:value...',
