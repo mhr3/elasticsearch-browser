@@ -14,16 +14,38 @@
     .x-grid-row-over .x-grid-cell-inner {
         white-space: normal;
     }
+
+    .state-loading {
+        background-image: url(resources/images/loadmask/loading.gif);
+        background-position: 0 center !important;
+    }
+
+    .state-ok {
+        background: none;
+        vertical-align: middle !important;
+    }
+    .state-ok:after {
+        content: "✓";
+        color: green;
+        font-size: 20px;
+    }
+
+    .state-error {
+        background: none;
+        vertical-align: middle !important;
+    }
+    .state-error:after {
+        content: "⚠";
+        color: red;
+        font-size: 20px;
+    }
 </style>
 <script type="text/javascript">
 
 var GET = {};
-window.location.href.replace(/[?&]+(table|database)=([a-z0-9][-a-z0-9\._\/]+)/gi, function (o, k, v) {
+window.location.href.replace(/[?&]+(index|type)=([a-z0-9][-a-z0-9\._\/]+)/gi, function (o, k, v) {
     GET[k] = v;
 });
-if (GET.database == undefined || GET.table == undefined) {
-    document.write('Add to URL required parameters: <b>?database=[index]&table=[type]</b><br/>where<br/> [index] ElasticSearch index<br/> [type] ElasticSearch index type');
-}
 
 Ext.require([
     'Ext.data.*',
@@ -107,6 +129,7 @@ Ext.define('Ext.ux.form.SearchField', {
     triggers: {
         clear: {
             cls: Ext.baseCSSPrefix + 'form-clear-trigger',
+            hidden: true,
             handler: function() { this.onTrigger1Click(); }
         },
         search: {
@@ -126,11 +149,6 @@ Ext.define('Ext.ux.form.SearchField', {
             }
         });
         me.store.remoteFilter = true;
-    },
-
-    afterRender: function () {
-        this.callParent();
-        this.getTrigger('clear').hide();
     },
 
     onTrigger1Click: function () {
@@ -191,7 +209,9 @@ Ext.define('Ext.ux.grid.HeaderToolTip', {
 
 Ext.onReady(function () {
     var grid = {};
+    var controlsBox = {};
     var dataStore = {};
+    var indexStore = {};
     var browserPort = (window.location.port) ? window.location.port : 9200;
 
     var BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:' + browserPort :
@@ -201,9 +221,28 @@ Ext.onReady(function () {
     var fieldModel = [];
     var fieldList = [];
     var aggregations = {};
+
+    var setServerState = function (state, errorMsg) {
+        var serverInput = controlsBox.down("#serverInput");
+
+        if (errorMsg) serverInput.setActiveError(errorMsg);
+        else serverInput.unsetActiveError();
+
+        var icon = serverInput.getTrigger('state').getEl();
+        icon.removeCls(['state-loading', 'state-ok', 'state-error']);
+        icon.addCls(state);
+    };
+
+    var updateUrls = function (baseUrl) {
+        BASE_URL = baseUrl.trim();
+        while (BASE_URL.lastIndexOf('/') == BASE_URL.length-1)
+            BASE_URL = BASE_URL.slice(0, BASE_URL.length-1);
+
+        indexStore.getProxy().setUrl(BASE_URL + '/_stats/docs');
+    }
     
-    var indexStore = Ext.create('Ext.data.Store', {
-        autoLoad: true,
+    indexStore = Ext.create('Ext.data.Store', {
+        autoLoad: GET.index === undefined,
         fields: [
             { name: 'id', unique: true },
             { name: 'docs', type: 'int' }
@@ -238,14 +277,19 @@ Ext.onReady(function () {
             }
         },
         listeners: {
-            load: function () {
-                console.log("Indices list loaded:", this.getData());
+            load: function (me, records, successful) {
+                if (successful) setServerState('state-ok');
+                else setServerState('state-error', 'Unable to get data from the server');
             }
         }
     });
+
+    if (GET.index !== undefined) {
+        indexStore.add({id: GET.index, docs: -1});
+    }
  
     var schemaStore = Ext.create('Ext.data.Store', {
-        autoLoad: true,
+        autoLoad: GET.index !== undefined,
         fields: [
             {
                 name: 'type'
@@ -261,7 +305,7 @@ Ext.onReady(function () {
             limitParam: undefined,
             appendId: false,
             noCache: false,
-            url: BASE_URL + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
+            url: BASE_URL + '/' + encodeURIComponent(GET.index) + '/' + encodeURIComponent(GET.type) + '/' + '_mapping',
             reader: {
                 type: 'json',
                 transform: {
@@ -321,7 +365,7 @@ Ext.onReady(function () {
                         };
                         var newRoot = {
                             total: 1,
-                            root: data[GET.database].mappings[GET.table].properties
+                            root: data[GET.index].mappings[GET.type].properties
                         };
                         processDictionary(newRoot.root, null);
                         return newRoot;
@@ -365,7 +409,7 @@ Ext.onReady(function () {
             limitParam: 'size',
             startParam: 'from',
             sortParam: 'sort',
-            url: BASE_URL + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?&track_scores=false',
+            url: BASE_URL + '/' + encodeURIComponent(GET.index) + '/' + encodeURIComponent(GET.type) + '/' + '_search?&track_scores=false',
             appendId: false,
             noCache: false,
             fields: fieldList,
@@ -507,7 +551,7 @@ Ext.onReady(function () {
         stateful: true,
         flex: 1,
         frame: false,
-        title: GET.table.charAt(0).toUpperCase() + GET.table.slice(1),
+        title: GET.type ? GET.type.charAt(0).toUpperCase() + GET.type.slice(1) : "Data",
         columns: [],
         store: dataStore,
         disableSelection: true,
@@ -516,6 +560,7 @@ Ext.onReady(function () {
             {
                 dock: 'bottom',
                 xtype: 'toolbar',
+                padding: 12,
                 items: [
                     {
                         width: 500,
@@ -538,27 +583,52 @@ Ext.onReady(function () {
         ]
     });
 
-    var controlsBox = Ext.create('Ext.panel.Panel', {
+    controlsBox = Ext.create('Ext.panel.Panel', {
         xtype: 'layout-horizontal-box',
         layout: { type: 'hbox', pack: 'start', align: 'stretch' },
 
-        //collapsible: true,
+        referenceHolder: true,
+        viewModel: true,
 
         bodyPadding: 10,
 
         items: [{
             xtype: 'textfield',
+            itemId: 'serverInput',
             flex: 3,
             fieldLabel: 'Server',
             labelWidth: 50,
-            value: BASE_URL
+            value: BASE_URL,
+
+            listeners: {
+                specialkey: function (me, e) {
+                    if (e.getKey() == e.ENTER) {
+                        setServerState('state-loading');
+                        console.log('me is', me, me.getValue());
+                        updateUrls(me.getValue());
+
+                        if (!indexStore.isLoading()) indexStore.load();
+                    }
+                }
+            },
+
+            triggers: {
+                state: {
+                    cls: 'state-loading'
+                }
+            }
         }, {
             xtype: 'combobox',
+            itemId: 'indexCombo',
             padding: '0 10 0',
             flex: 2,
             fieldLabel: 'Index',
             labelWidth: 50,
             forceSelection: true,
+
+            reference: 'index',
+            publishes: 'value',
+
             queryMode: 'local',
             store: indexStore,
             valueField: 'id',
@@ -567,7 +637,10 @@ Ext.onReady(function () {
             xtype: 'combobox',
             flex: 1,
             fieldLabel: 'Type',
-            labelWidth: 50
+            labelWidth: 50,
+            bind: {
+                disabled: '{!index.value}'
+            }
         }]
     });
 
@@ -587,7 +660,12 @@ Ext.onReady(function () {
         ]
     });
 
-    grid.mask("Loading data mappings...");
+    if (GET.index !== undefined) {
+        controlsBox.down('#indexCombo').setValue(GET.index);
+        grid.mask("Loading data mappings...");
+    } else if (!schemaStore.isLoaded()) {
+        grid.disable();
+    }
 });
 
 </script>
