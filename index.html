@@ -194,6 +194,9 @@ Ext.onReady(function () {
     var dataStore = {};
     var browserPort = (window.location.port) ? window.location.port : 9200;
 
+    var BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:' + browserPort :
+        window.location.protocol + '//' + window.location.hostname + ':' + browserPort;
+
     var columnModel = [];
     var fieldModel = [];
     var fieldList = [];
@@ -218,7 +221,7 @@ Ext.onReady(function () {
             sortParam: undefined,
             limitParam: undefined,
             timeout: 20000,
-            url: 'http://localhost:' + browserPort + '/_stats/docs',
+            url: BASE_URL + '/_stats/docs',
             appendId: false,
             noCache: false,
             reader: {
@@ -258,8 +261,7 @@ Ext.onReady(function () {
             limitParam: undefined,
             appendId: false,
             noCache: false,
-            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
-            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
+            url: BASE_URL + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_mapping',
             reader: {
                 type: 'json',
                 transform: {
@@ -363,8 +365,7 @@ Ext.onReady(function () {
             limitParam: 'size',
             startParam: 'from',
             sortParam: 'sort',
-            //url: window.location.protocol + '//' + window.location.hostname + ':' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?track_scores=false',
-            url: 'http://localhost:' + browserPort + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?&track_scores=false',
+            url: BASE_URL + '/' + encodeURIComponent(GET.database) + '/' + encodeURIComponent(GET.table) + '/' + '_search?&track_scores=false',
             appendId: false,
             noCache: false,
             fields: fieldList,
@@ -550,7 +551,7 @@ Ext.onReady(function () {
             flex: 3,
             fieldLabel: 'Server',
             labelWidth: 50,
-            value: 'http://localhost:9200'
+            value: BASE_URL
         }, {
             xtype: 'combobox',
             padding: '0 10 0',
