@@ -345,7 +345,7 @@ Ext.onReady(function () {
                                 var xtype = 'textfield';
                                 if (!type || typeof type !== "string" || type === "object") {
                                     var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
-                                    if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
+                                    if (newPrefix && newPrefix.replace(/[^.]/g, "").length >= 1) continue; // limit nesting
                                     processDictionary(dictionary[p], typeName, newPrefix);
                                     continue;
                                 }
@@ -449,9 +449,41 @@ Ext.onReady(function () {
             fields: fieldList,
             reader: {
                 type: 'json',
-                rootProperty: 'hits.hits',
-                record: '_source',
-                totalProperty: 'hits.total'
+                rootProperty: 'hits',
+                totalProperty: 'total',
+                transform: {
+                    fn: function (data) {
+                        var result = {};
+
+                        function recurse (cur, prop) {
+                            if (Object(cur) !== cur) {
+                                result[prop] = cur;
+                            } else if (Array.isArray(cur)) {
+                                for(var i=0, l=cur.length; i<l; i++)
+                                    recurse(cur[i], prop ? prop+"."+i : ""+i);
+                                if (l == 0)
+                                    result[prop] = [];
+                            } else {
+                                var isEmpty = true;
+                                for (var p in cur) {
+                                    isEmpty = false;
+                                    recurse(cur[p], prop ? prop+"."+p : p);
+                                }
+                                if (isEmpty)
+                                    result[prop] = {};
+                            }
+                        }
+                        var elems = [];
+                        var arr = data.hits.hits;
+                        for (var i = 0; i < arr.length; i++) {
+                            result = {};
+                            recurse(arr[i]._source, "");
+                            elems.push(result);
+                        }
+                        var newData = {total: data.hits.total, hits: elems};
+                        return newData;
+                    }
+                }
             },
         }),
         simpleSortMode: true,
