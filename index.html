@@ -225,8 +225,13 @@ Ext.onReady(function () {
     var setServerState = function (state, errorMsg) {
         var serverInput = controlsBox.down("#serverInput");
 
-        if (errorMsg) serverInput.setActiveError(errorMsg);
-        else serverInput.unsetActiveError();
+        if (errorMsg) {
+            serverInput.setActiveError(errorMsg);
+            grid.disable();
+        }
+        else {
+            serverInput.unsetActiveError();
+        }
 
         var icon = serverInput.getTrigger('state').getEl();
         icon.removeCls(['state-loading', 'state-ok', 'state-error']);
@@ -254,6 +259,11 @@ Ext.onReady(function () {
         GET.type = selectedType;
 
         dataStore.removeAll();
+
+        if (!indexMappings.hasOwnProperty(GET.type)) {
+            grid.disable();
+            return;
+        }
 
         dataStore.setFields(indexMappings[GET.type].fieldModel);
         dataStore.getProxy().fields = indexMappings[GET.type].fieldList;
@@ -403,7 +413,7 @@ Ext.onReady(function () {
                 try {
                     if (successful) setServerState('state-ok');
 
-                    if (GET.type !== undefined && indexMappings[GET.type].columnModel.length === 0) {
+                    if (GET.type !== undefined && indexMappings[GET.type] && indexMappings[GET.type].columnModel.length === 0) {
                         throw new Error("Mappings couldn't be loaded");
                     }
 
