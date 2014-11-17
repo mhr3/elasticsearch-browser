@@ -212,14 +212,14 @@ Ext.onReady(function () {
     var controlsBox = {};
     var dataStore = {};
     var indexStore = {};
+    var schemaStore = {};
     var browserPort = (window.location.port) ? window.location.port : 9200;
 
     var BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:' + browserPort :
         window.location.protocol + '//' + window.location.hostname + ':' + browserPort;
 
-    var columnModel = [];
-    var fieldModel = [];
     var fieldList = [];
+    var indexMappings = {};
     var aggregations = {};
 
     var setServerState = function (state, errorMsg) {
@@ -239,8 +239,32 @@ Ext.onReady(function () {
             BASE_URL = BASE_URL.slice(0, BASE_URL.length-1);
 
         indexStore.getProxy().setUrl(BASE_URL + '/_stats/docs');
-    }
+    };
+
+    var selectIndex = function (selectedIndex) {
+        GET.index = selectedIndex;
+
+        schemaStore.getProxy().setUrl(BASE_URL + '/' + encodeURIComponent(GET.index) + '/_mapping');
+        if (!schemaStore.isLoading()) {
+            schemaStore.load();
+        }
+    };
     
+    var selectType = function (selectedType) {
+        GET.type = selectedType;
+
+        dataStore.removeAll();
+
+        dataStore.setFields(indexMappings[GET.type].fieldModel);
+        dataStore.getProxy().fields = indexMappings[GET.type].fieldList;
+        dataStore.getProxy().setUrl(BASE_URL + '/' + encodeURIComponent(GET.index) + '/' + encodeURIComponent(GET.type) + '/' + '_search?&track_scores=false');
+        dataStore.load();
+
+        grid.setTitle(GET.type.charAt(0).toUpperCase() + GET.type.slice(1));
+        grid.reconfigure(dataStore, indexMappings[GET.type].columnModel);
+        grid.enable();
+    };
+
     indexStore = Ext.create('Ext.data.Store', {
         autoLoad: GET.index === undefined,
         fields: [
@@ -284,16 +308,10 @@ Ext.onReady(function () {
         }
     });
 
-    if (GET.index !== undefined) {
-        indexStore.add({id: GET.index, docs: -1});
-    }
- 
-    var schemaStore = Ext.create('Ext.data.Store', {
-        autoLoad: GET.index !== undefined,
+    schemaStore = Ext.create('Ext.data.Store', {
+        autoLoad: false,
         fields: [
-            {
-                name: 'type'
-            }
+            { name: 'id', unique: true },
         ],
         proxy: {
             type: 'rest',
@@ -305,12 +323,12 @@ Ext.onReady(function () {
             limitParam: undefined,
             appendId: false,
             noCache: false,
-            url: BASE_URL + '/' + encodeURIComponent(GET.index) + '/' + encodeURIComponent(GET.type) + '/' + '_mapping',
+            url: BASE_URL + '/' + encodeURIComponent(GET.index) + '/_mapping',
             reader: {
                 type: 'json',
                 transform: {
                     fn: function (data) {
-                        var processDictionary = function (dictionary, prefix) {
+                        var processDictionary = function (dictionary, typeName, prefix) {
                             for (p in dictionary) {
                                 if (!dictionary.hasOwnProperty(p)) continue;
                                 var type = dictionary[p].type;
@@ -318,7 +336,7 @@ Ext.onReady(function () {
                                 if (!type || typeof type !== "string" || type === "object") {
                                     var newPrefix = p === "properties" ? prefix : (prefix ? prefix + "." + p : p);
                                     if (newPrefix && newPrefix.replace(/[^.]/g, "").length > 1) continue; // limit nesting
-                                    processDictionary(dictionary[p], newPrefix);
+                                    processDictionary(dictionary[p], typeName, newPrefix);
                                     continue;
                                 }
                                 // prefixedProp
@@ -352,38 +370,44 @@ Ext.onReady(function () {
                                         xtype = 'textfield';
                                         break;
                                 }
-                                columnModel.push({
+                                indexMappings[typeName].columnModel.push({
                                     text: pp,
                                     dataIndex: pp
                                 });
-                                fieldModel.push({
+                                indexMappings[typeName].fieldModel.push({
                                     name: pp,
                                     type: type
                                 });
-                                fieldList.push(pp);
+                                indexMappings[typeName].fieldList.push(pp);
                             }
                         };
-                        var newRoot = {
-                            total: 1,
-                            root: data[GET.index].mappings[GET.type].properties
-                        };
-                        processDictionary(newRoot.root, null);
-                        return newRoot;
+
+                        var topMapping = data[GET.index].mappings;
+                        var d = [];
+                        indexMappings = {}; // clear our caches
+                        for (var typeName in topMapping) {
+                            d.push({id: typeName});
+
+                            indexMappings[typeName] = {columnModel: [], fieldModel: [], fieldList: []};
+                            aggregations = {};
+                            processDictionary(topMapping[typeName].properties, typeName, null);
+                        }
+
+                        return d;
                     }
                 }
             }
         },
         listeners: {
-            load: function () {
+            load: function (me, records, successful) {
                 try {
-                    if (columnModel.length === 0) {
+                    if (successful) setServerState('state-ok');
+
+                    if (GET.type !== undefined && indexMappings[GET.type].columnModel.length === 0) {
                         throw new Error("Mappings couldn't be loaded");
                     }
 
-                    dataStore.setFields(fieldModel);
-                    grid.unmask();
-                    dataStore.setAutoLoad(true);
-                    grid.reconfigure(dataStore, columnModel);
+                    if (GET.type !== undefined) selectType(GET.type);
                 } catch(err) {
                     Ext.MessageBox.show({
                         title: "Error processing mapping",
@@ -587,9 +611,6 @@ Ext.onReady(function () {
         xtype: 'layout-horizontal-box',
         layout: { type: 'hbox', pack: 'start', align: 'stretch' },
 
-        referenceHolder: true,
-        viewModel: true,
-
         bodyPadding: 10,
 
         items: [{
@@ -604,7 +625,6 @@ Ext.onReady(function () {
                 specialkey: function (me, e) {
                     if (e.getKey() == e.ENTER) {
                         setServerState('state-loading');
-                        console.log('me is', me, me.getValue());
                         updateUrls(me.getValue());
 
                         if (!indexStore.isLoading()) indexStore.load();
@@ -620,26 +640,39 @@ Ext.onReady(function () {
         }, {
             xtype: 'combobox',
             itemId: 'indexCombo',
-            padding: '0 10 0',
             flex: 2,
+            padding: '0 10 0',
             fieldLabel: 'Index',
             labelWidth: 50,
             forceSelection: true,
 
-            reference: 'index',
-            publishes: 'value',
-
             queryMode: 'local',
             store: indexStore,
             valueField: 'id',
-            displayField: 'id'
+            displayField: 'id',
+
+            listeners: {
+                select: function (combo, item) {
+                    selectIndex(combo.getValue());
+                }
+            }
         }, {
             xtype: 'combobox',
+            itemId: 'typeCombo',
             flex: 1,
             fieldLabel: 'Type',
             labelWidth: 50,
-            bind: {
-                disabled: '{!index.value}'
+            forceSelection: true,
+
+            queryMode: 'local',
+            store: schemaStore,
+            valueField: 'id',
+            displayField: 'id',
+
+            listeners: {
+                select: function (combo, item) {
+                    selectType(combo.getValue());
+                }
             }
         }]
     });
@@ -661,10 +694,14 @@ Ext.onReady(function () {
     });
 
     if (GET.index !== undefined) {
+        indexStore.add({id: GET.index, docs: -1});
         controlsBox.down('#indexCombo').setValue(GET.index);
-        grid.mask("Loading data mappings...");
-    } else if (!schemaStore.isLoaded()) {
-        grid.disable();
+        selectIndex(GET.index);
+    }
+    grid.disable();
+
+    if (GET.type !== undefined) {
+        controlsBox.down('#typeCombo').setValue(GET.type);
     }
 });
 
