@@ -72,8 +72,8 @@ Ext.define('ES.data.proxy', {
         return JSON.stringify(esSort);
     },
 
-    doRequest: function (operation, callback, scope) {
-        var request = this.buildRequest(operation, callback, scope);
+    doRequest: function (operation) {
+        var request = this.buildRequest(operation);
         var params = request.getParams();
 
         // defaults
@@ -105,8 +105,7 @@ Ext.define('ES.data.proxy', {
             binary              : this.getBinary(),
             headers             : this.getHeaders(),
             timeout             : this.getTimeout(),
-            scope               : scope,
-            callback            : this.createRequestCallback(request, operation, callback, scope),
+            callback            : this.createRequestCallback(request, operation),
             method              : 'POST',
             disableCaching      : false
         });
@@ -248,6 +247,7 @@ Ext.onReady(function () {
 
     var selectIndex = function (selectedIndex) {
         GET.index = selectedIndex;
+        GET.lastType = GET.type;
 
         schemaStore.getProxy().setUrl(BASE_URL + '/' + encodeURIComponent(GET.index) + '/_mapping');
         if (!schemaStore.isLoading()) {
@@ -263,6 +263,11 @@ Ext.onReady(function () {
         if (!indexMappings.hasOwnProperty(GET.type)) {
             grid.disable();
             return;
+        }
+
+        var typeCombo = controlsBox.down('#typeCombo');
+        if (typeCombo.getValue() !== selectedType) {
+            controlsBox.down('#typeCombo').setValue(selectedType);
         }
 
         dataStore.setFields(indexMappings[GET.type].fieldModel);
@@ -308,12 +313,19 @@ Ext.onReady(function () {
                         return a;
                     }
                 }
+            },
+            listeners: {
+                exception: function (proxy, request, operation) {
+                    console.log(request, operation, operation.getError());
+                }
             }
         },
         listeners: {
             load: function (me, records, successful) {
                 if (successful) setServerState('state-ok');
-                else setServerState('state-error', 'Unable to get data from the server');
+                else {
+                    setServerState('state-error', 'Unable to get data from the server');
+                }
             }
         }
     });
@@ -392,15 +404,19 @@ Ext.onReady(function () {
                             }
                         };
 
-                        var topMapping = data[GET.index].mappings;
-                        var d = [];
-                        indexMappings = {}; // clear our caches
-                        for (var typeName in topMapping) {
-                            d.push({id: typeName});
+                        try {
+                            indexMappings = {}; // clear our caches
+                            var topMapping = data[GET.index].mappings;
+                            var d = [];
+                            for (var typeName in topMapping) {
+                                d.push({id: typeName});
 
-                            indexMappings[typeName] = {columnModel: [], fieldModel: [], fieldList: []};
-                            aggregations = {};
-                            processDictionary(topMapping[typeName].properties, typeName, null);
+                                indexMappings[typeName] = {columnModel: [], fieldModel: [], fieldList: []};
+                                aggregations = {};
+                                processDictionary(topMapping[typeName].properties, typeName, null);
+                            }
+                        } catch (err) {
+                            return [];
                         }
 
                         return d;
@@ -412,10 +428,22 @@ Ext.onReady(function () {
             load: function (me, records, successful) {
                 try {
                     if (successful) setServerState('state-ok');
+                    else setServerState('state-error', 'Unable to get data from the server');
 
-                    if (GET.type !== undefined && indexMappings[GET.type] && indexMappings[GET.type].columnModel.length === 0) {
-                        throw new Error("Mappings couldn't be loaded");
+                    if (GET.type !== undefined) {
+                        if (indexMappings[GET.type] === undefined || indexMappings[GET.type].columnModel.length === 0) {
+                            if (GET.lastType === undefined) throw new Error("Mappings couldn't be loaded");
+                        }
                     }
+
+                    var hasMappings = false;
+                    for (var p in indexMappings) {
+                        if (!indexMappings.hasOwnProperty(p)) continue;
+                        hasMappings = true;
+                        break;
+                    }
+
+                    if (!hasMappings) throw new Error("No mappings in index " + GET.index);
 
                     if (GET.type !== undefined) selectType(GET.type);
                 } catch(err) {
@@ -741,10 +769,6 @@ Ext.onReady(function () {
         selectIndex(GET.index);
     }
     grid.disable();
-
-    if (GET.type !== undefined) {
-        controlsBox.down('#typeCombo').setValue(GET.type);
-    }
 });
 
 </script>
