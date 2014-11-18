@@ -249,6 +249,8 @@ Ext.onReady(function () {
         GET.index = selectedIndex;
         GET.lastType = GET.type;
 
+        controlsBox.down('#indexCombo').clearInvalid();
+
         schemaStore.getProxy().setUrl(BASE_URL + '/' + encodeURIComponent(GET.index) + '/_mapping');
         if (!schemaStore.isLoading()) {
             schemaStore.load();
@@ -260,12 +262,16 @@ Ext.onReady(function () {
 
         dataStore.removeAll();
 
-        if (!indexMappings.hasOwnProperty(GET.type)) {
+        var typeCombo = controlsBox.down('#typeCombo');
+
+        if (GET.type === undefined || !indexMappings.hasOwnProperty(GET.type)) {
+            typeCombo.clearValue();
+            typeCombo.markInvalid('Select a valid type');
             grid.disable();
             return;
         }
 
-        var typeCombo = controlsBox.down('#typeCombo');
+        typeCombo.clearInvalid();
         if (typeCombo.getValue() !== selectedType) {
             controlsBox.down('#typeCombo').setValue(selectedType);
         }
@@ -275,7 +281,7 @@ Ext.onReady(function () {
         dataStore.getProxy().setUrl(BASE_URL + '/' + encodeURIComponent(GET.index) + '/' + encodeURIComponent(GET.type) + '/' + '_search?&track_scores=false');
         dataStore.load();
 
-        grid.setTitle(GET.type.charAt(0).toUpperCase() + GET.type.slice(1));
+        grid.setTitle(GET.type.charAt(0).toUpperCase() + GET.type.slice(1) + ' (in ' + GET.index + ')');
         grid.reconfigure(dataStore, indexMappings[GET.type].columnModel);
         grid.enable();
     };
@@ -322,8 +328,9 @@ Ext.onReady(function () {
         },
         listeners: {
             load: function (me, records, successful) {
-                if (successful) setServerState('state-ok');
-                else {
+                if (successful) {
+                    setServerState('state-ok');
+                } else {
                     setServerState('state-error', 'Unable to get data from the server');
                 }
             }
@@ -445,7 +452,7 @@ Ext.onReady(function () {
 
                     if (!hasMappings) throw new Error("No mappings in index " + GET.index);
 
-                    if (GET.type !== undefined) selectType(GET.type);
+                    selectType(GET.type);
                 } catch(err) {
                     Ext.MessageBox.show({
                         title: "Error processing mapping",
@@ -767,6 +774,8 @@ Ext.onReady(function () {
         indexStore.add({id: GET.index, docs: -1});
         controlsBox.down('#indexCombo').setValue(GET.index);
         selectIndex(GET.index);
+    } else {
+        controlsBox.down('#indexCombo').markInvalid('Select an index');
     }
     grid.disable();
 });
