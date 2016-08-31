@@ -212,7 +212,7 @@ Ext.onReady(function () {
     var dataStore = {};
     var indexStore = {};
     var schemaStore = {};
-    var browserPort = (window.location.port) ? window.location.port : 9200;
+    var browserPort = window.location.port || (window.location.protocol == 'http:' ? 80 : 443);
 
     var BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:' + browserPort :
         window.location.protocol + '//' + window.location.hostname + ':' + browserPort;
